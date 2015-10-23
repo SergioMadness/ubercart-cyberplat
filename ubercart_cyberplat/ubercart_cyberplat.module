@@ -1,0 +1,92 @@
+<?php
+function ubercart_cyberplat_uc_payment_gateway() {
+  $gateways['ubercart_cyberplat'] = array(
+    'title' => t('Cyberplat'),
+    'description' => t('Process payments through my custom payment gateway'),
+  );
+  return $gateways;
+}
+
+
+
+function ubercart_cyberplat_uc_payment_method() {
+  $methods['cyberplat'] = array(
+    'name' => t('Cyberplat'),
+    'title' => t('Cyberplat'),
+    'desc' => t('Pay through cyberplat gateway'),
+    'callback' => 'cyberplat_payment_method',
+    'redirect' => 'cyberplat_payment_form',
+    'weight' => 1,
+    'checkout' => TRUE,
+  );
+  return $methods;
+}
+
+function cyberplat_payment_method($op, &$order) {
+  switch ($op) {
+    case 'settings':
+      $form['cyberplat_cgi_url'] = array(
+        '#type' => 'textfield',
+        '#title' => t('CGI script URL'),
+        '#description' => t('CGI script URL'),
+        '#default_value' => variable_get('cyberplat_cgi_url'),
+      );
+        return $form;
+  }
+}
+
+function cyberplat_payment_form($form, &$form_state, $order) {
+
+  
+  $form['orderid'] = array('#type' => 'hidden', '#value' => $order->order_id);
+  $form['paymentdetails'] = array('#type' => 'hidden', '#value' => 'Оплата заказа №'.$order->order_id);
+  $form['amount'] = array('#type' => 'hidden', '#value' => $order->order_total);
+  $form['currency'] = array('#type' => 'hidden', '#value' => 2);
+  $form['firstname'] = array('#type' => 'hidden', '#value' => 'Иван');
+  $form['lastname'] = array('#type' => 'hidden', '#value' => 'Иванов');
+  $form['email'] = array('#type' => 'hidden', '#value' => 'test@cyberplat.com');
+  $form['return_url'] = array('#type' => 'hidden', '#value' => 'http://shop-test.cyberplat.com/test');
+
+  $form['#attributes']['accept-charset'] = 'Windows-1251';
+  $form['#attributes']['onsubmit'] = ' document.charset = "windows-1251";';
+
+  $form['#action'] = variable_get('cyberplat_cgi_url');
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit order'),
+  );
+  return $form;
+}
+
+function ubercart_cyberplat_menu() {
+  $items = array();
+  $items['payment/complete'] = array(
+    'title' => t('Payment complete'),
+    'page callback' => 'order_complete',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+function order_complete() {
+
+  if (empty($_GET) || isset($_GET['failure'])) {
+    watchdog('Cyberplat',
+             'Received an empty or incomplete response.  Response details: @request_details',
+             array('@request_details' =>  print_r($_GET, true)), WATCHDOG_ERROR);
+
+    return t('There was a problem with your payment');
+  }
+
+  if (isset($_GET['success'])) {
+
+    $order = uc_order_load(intval($_GET['success']));
+    
+    uc_payment_enter($order->order_id, 'ubercart_cyberplat',  $order->order_total, 0, NULL, $order->order_id);
+    uc_cart_complete_sale($order, variable_get('uc_new_customer_login', FALSE));
+
+    return t('Thank you for your purchase');
+  }
+}
